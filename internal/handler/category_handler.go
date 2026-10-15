@@ -20,6 +20,8 @@ func NewCategoryHandler(r repository.CategoryRepository) *CategoryHandler { retu
 // @Success 201 {object} model.Category
 // @Failure 409,422,500 {object} model.ErrorResponse
 // @Router /categories [post]
+// @Security BearerAuth
+// @Failure 401,403 {object} model.ErrorResponse
 func (h *CategoryHandler) Create(c *gin.Context) {
 	in, ok := readInput[model.CategoryInput](c)
 	if !ok {

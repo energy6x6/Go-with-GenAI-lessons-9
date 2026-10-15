@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"libratrack/internal/app"
+	"libratrack/internal/auth"
 	"libratrack/internal/handler"
 	"libratrack/internal/model"
 	"libratrack/internal/repository"
@@ -33,7 +34,31 @@ func checkStatus(t *testing.T, r *httptest.ResponseRecorder, want int) {
 func router(t *testing.T) http.Handler {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	return app.NewRouter(repository.NewRepositories(testutil.Database(t)))
+	t.Setenv("JWT_SECRET", "lesson9-tests-only-secret-32-bytes-long")
+	t.Setenv("ALLOWED_ORIGIN", "http://example.com")
+	db := testutil.Database(t)
+	user := model.User{Email: "regression-admin@example.com", Role: model.RoleAdmin}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := auth.NewTokensFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := tokens.Issue(user.ID, user.Role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := app.NewRouter(repository.NewRepositories(db), tokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != "GET" && req.Method != "OPTIONS" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+		r.ServeHTTP(w, req)
+	})
 }
 
 func TestHealthAndSwagger(t *testing.T) {

@@ -20,6 +20,8 @@ func NewAuthorHandler(r repository.AuthorRepository) *AuthorHandler { return &Au
 // @Success 201 {object} model.Author
 // @Failure 422,500 {object} model.ErrorResponse
 // @Router /authors [post]
+// @Security BearerAuth
+// @Failure 401,403 {object} model.ErrorResponse
 func (h *AuthorHandler) Create(c *gin.Context) {
 	in, ok := readInput[model.AuthorInput](c)
 	if !ok {

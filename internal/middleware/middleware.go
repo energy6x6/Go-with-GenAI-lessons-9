@@ -40,12 +40,15 @@ func LoggingMiddleware() gin.HandlerFunc {
 func CORSMiddleware() gin.HandlerFunc {
 	origin := os.Getenv("ALLOWED_ORIGIN")
 	if origin == "" {
-		origin = "*"
+		origin = "http://localhost:5173"
 	}
 	return func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Vary", "Origin")
+		if c.GetHeader("Origin") == origin && origin != "*" {
+			c.Header("Access-Control-Allow-Origin", origin)
+		}
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return

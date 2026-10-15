@@ -4,10 +4,11 @@
 .docnav/
 bin/
 *.log
-!evidence/n1-*.log
 cover.out
 *.pid
 resp.json
 headers.txt
 .DS_Store
 backups/
+test-results.jsonl
+test-summary.txt

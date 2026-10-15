@@ -1,0 +1,85 @@
+name: Lesson 9 security check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lesson9-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-bootstrap-only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      PGPASSWORD: ci-bootstrap-only
+      DATABASE_URL: postgres://libratrack:ci-app-only@localhost:5432/libratrack9?sslmode=disable
+      TEST_DATABASE_URL: postgres://libratrack:ci-app-only@localhost:5432/libratrack9_test?sslmode=disable
+      JWT_SECRET: ci-ephemeral-signing-secret-not-for-deployment
+      POSTGRES_PASSWORD: ci-compose-validation-only
+      APP_DB_PASSWORD: ci-compose-validation-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Create application owner without superuser privileges
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE libratrack LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD 'ci-app-only';
+          CREATE DATABASE libratrack9 OWNER libratrack;
+          CREATE DATABASE libratrack9_test OWNER libratrack;
+          SQL
+      - name: Static validation
+        run: |
+          test -z "$(gofmt -l cmd internal docs)"
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+          go vet ./...
+          go build ./...
+          docker compose config -q
+          test -f migrations/000003_add_auth_fields.up.sql
+          test -f migrations/000003_add_auth_fields.down.sql
+          test -f prompts.txt
+          test -f security_audit.md
+          test -f security_design.txt
+          test -f internal/integration/auth_test.go
+          test -f internal/integration/rbac_test.go
+          test -z "$(git ls-files .env)"
+      - name: Tests, rollback and concurrency on PostgreSQL
+        run: |
+          set -o pipefail
+          go test -race -count=1 -coverpkg=./... -covermode=atomic -coverprofile=cover.out -json ./... | tee test-results.jsonl
+          python3 scripts/test_summary.py test-results.jsonl | tee test-summary.txt
+          go tool cover -func=cover.out | tail -n 1 | tee -a test-summary.txt
+          cat test-summary.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Vulnerability check
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+      - name: Upload test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lesson9-test-results
+          path: |
+            test-results.jsonl
+            test-summary.txt
+            cover.out
+          if-no-files-found: ignore

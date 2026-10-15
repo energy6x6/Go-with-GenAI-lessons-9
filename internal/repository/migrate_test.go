@@ -20,7 +20,7 @@ func TestMigrationsUpDownUpPreserveLegacyData(t *testing.T) {
 	}
 	defer m.Close()
 	// Remove demo data and normalization, retaining the initial flat schema.
-	if err := m.Steps(-2); err != nil {
+	if err := m.Migrate(1); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Exec(`INSERT INTO books(title,isbn,author,category,published_year,created_at)
@@ -37,7 +37,7 @@ func TestMigrationsUpDownUpPreserveLegacyData(t *testing.T) {
 	if len(b.Authors) != 1 || b.Authors[0].FullName != "Original Author" || b.Category.Name != "Original Category" || b.PublishedYear == nil || *b.PublishedYear != 0 || b.CreatedAt.Year() != 2010 {
 		t.Fatalf("normalization changed legacy data: %+v", b)
 	}
-	if err := m.Steps(-2); err != nil {
+	if err := m.Migrate(1); err != nil {
 		t.Fatal(err)
 	}
 	var flat struct{ Author, Category string }

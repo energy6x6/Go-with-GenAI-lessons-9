@@ -20,6 +20,8 @@ func NewBookHandler(repo repository.BookRepository) *BookHandler { return &BookH
 // @Success 201 {object} model.Book
 // @Failure 409,422,500 {object} model.ErrorResponse
 // @Router /books [post]
+// @Security BearerAuth
+// @Failure 401,403 {object} model.ErrorResponse
 func (h *BookHandler) Create(c *gin.Context) {
 	in, ok := readInput[model.BookInput](c)
 	if !ok {
@@ -68,6 +70,8 @@ func (h *BookHandler) Get(c *gin.Context) {
 // @Success 200 {object} model.Book
 // @Failure 400,404,409,422,500 {object} model.ErrorResponse
 // @Router /books/{id} [put]
+// @Security BearerAuth
+// @Failure 401,403 {object} model.ErrorResponse
 func (h *BookHandler) Update(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
@@ -96,6 +100,8 @@ func (h *BookHandler) Update(c *gin.Context) {
 // @Success 204 "No content"
 // @Failure 400,404,500 {object} model.ErrorResponse
 // @Router /books/{id} [delete]
+// @Security BearerAuth
+// @Failure 401,403 {object} model.ErrorResponse
 func (h *BookHandler) Delete(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {

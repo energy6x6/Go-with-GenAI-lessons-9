@@ -1,0 +1,42 @@
+Lesson 9 local verification — 2026-10-15
+Source: completed Lesson 8 commit d27b5b7
+Platform: macOS amd64; PostgreSQL 16 in a separate Lesson 9 Docker volume.
+go version go1.27.2 darwin/amd64
+
+PASS go build ./...
+PASS go vet ./...
+PASS go test -v ./...
+PASS go test -race -count=1 -coverpkg=./... -covermode=atomic -coverprofile=cover.out -json ./...
+Top-level tests: PASS=71 FAIL=0 SKIP=0
+All test cases:  PASS=148 FAIL=0 SKIP=0
+Packages:       PASS=13 FAIL=0 SKIP=0
+Total statement coverage including cross-package integration calls: 71.6%
+
+Migration round trips, inherited normalization/N+1, concurrent loans/registration,
+real auth/RBAC, ownership, invalid tokens, DTOs, logger and CORS are included above.
+
+PASS docker compose config -q
+PASS /health -> 200
+PASS /swagger/index.html -> 200
+PASS /swagger/doc.json -> 200
+PASS Swagger declares Bearer auth on protected operations
+PASS /api/v1/books -> 200
+PASS fresh Lesson 9 seed contains 10 books
+PASS /api/v1/me/loans -> 401
+PASS /api/v1/users -> 401
+
+Dependency scan (govulncheck v1.9.0):
+=== Symbol Results ===
+
+No vulnerabilities found.
+
+Your code is affected by 0 vulnerabilities.
+This scan also found 0 vulnerabilities in packages you import and 1
+vulnerability in modules you require, but your code doesn't appear to call these
+vulnerabilities.
+Use '-show verbose' for more details.
+
+Module-only advisory: GO-2026-5932, golang.org/x/crypto/openpgp, not imported.
+Student screenshots and personal manual review are not included in this result.
+GitHub CI status is verified separately after publication; local results alone
+must not be presented as successful GitHub CI or a completed LMS submission.

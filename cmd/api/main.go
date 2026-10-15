@@ -11,16 +11,25 @@ import (
 	"time"
 
 	"libratrack/internal/app"
+	"libratrack/internal/auth"
 	"libratrack/internal/config"
 	"libratrack/internal/repository"
 )
 
 // @title LibraTrack Library API
-// @version 2.0
-// @description Lesson 8: PostgreSQL, SQL migrations, authors, categories and copies.
+// @version 3.0
+// @description Lesson 9: bcrypt, HS256 JWT, RBAC, users and loans.
 // @BasePath /api/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter Bearer followed by your access token.
 func main() {
 	c, err := config.Load()
+	if err != nil {
+		log.Fatal(err)
+	}
+	tokens, err := auth.NewTokensFromEnv()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -38,7 +47,11 @@ func main() {
 	if err := repository.Migrate(c.DatabaseURL, c.MigrationsPath); err != nil {
 		log.Fatalf("cannot apply SQL migrations (%T)", err)
 	}
-	server := &http.Server{Addr: ":" + c.Port, Handler: app.NewRouter(repository.NewRepositories(db)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
+	router, err := app.NewRouter(repository.NewRepositories(db), tokens)
+	if err != nil {
+		log.Fatal("cannot initialize authentication")
+	}
+	server := &http.Server{Addr: "127.0.0.1:" + c.Port, Handler: router, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
 	signals, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {

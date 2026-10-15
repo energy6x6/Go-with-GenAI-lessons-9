@@ -5,14 +5,20 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 	_ "libratrack/docs"
+	"libratrack/internal/auth"
 	"libratrack/internal/handler"
 	"libratrack/internal/middleware"
+	"libratrack/internal/model"
 	"libratrack/internal/repository"
 	"net/http"
+	"time"
 )
 
-func NewRouter(repos repository.Repositories) http.Handler {
+func NewRouter(repos repository.Repositories, tokens *auth.Tokens) (http.Handler, error) {
 	r := gin.New()
+	if err := r.SetTrustedProxies(nil); err != nil {
+		return nil, err
+	}
 	r.RedirectTrailingSlash = false
 	r.HandleMethodNotAllowed = true
 	r.Use(middleware.RecoveryMiddleware(), middleware.LoggingMiddleware(), middleware.CORSMiddleware())
@@ -21,23 +27,41 @@ func NewRouter(repos repository.Repositories) http.Handler {
 	a := handler.NewAuthorHandler(repos.Authors)
 	cat := handler.NewCategoryHandler(repos.Categories)
 	copies := handler.NewCopyHandler(repos.Copies)
-	api := r.Group("/api/v1")
-	api.POST("/books", b.Create)
-	api.GET("/books", b.List)
-	api.GET("/books/:id", b.Get)
-	api.PUT("/books/:id", b.Update)
-	api.DELETE("/books/:id", b.Delete)
-	api.POST("/authors", a.Create)
-	api.GET("/authors", a.List)
-	api.GET("/authors/:id", a.Get)
-	api.POST("/categories", cat.Create)
-	api.GET("/categories", cat.List)
-	api.GET("/categories/:id", cat.Get)
-	api.POST("/books/:id/copies", copies.Create)
-	api.GET("/books/:id/copies", copies.List)
-	api.GET("/books/:id/availability", copies.Availability)
+	authH, err := handler.NewAuthHandler(repos.Users, tokens)
+	if err != nil {
+		return nil, err
+	}
+	users := handler.NewUserHandler(repos.Users)
+	loans := handler.NewLoanHandler(repos.Loans)
+	public := r.Group("/api/v1")
+	public.GET("/books", b.List)
+	public.GET("/books/:id", b.Get)
+	public.GET("/authors", a.List)
+	public.GET("/authors/:id", a.Get)
+	public.GET("/categories", cat.List)
+	public.GET("/categories/:id", cat.Get)
+	public.GET("/books/:id/copies", copies.List)
+	public.GET("/books/:id/availability", copies.Availability)
+	credentials := public.Group("/auth", middleware.AuthRateLimit(20, time.Minute))
+	credentials.POST("/register", authH.Register)
+	credentials.POST("/login", authH.Login)
+	protected := r.Group("/api/v1", middleware.AuthMiddleware(tokens, repos.Users))
+	protected.GET("/me/loans", loans.MyLoans)
+	protected.PUT("/me/profile", users.UpdateProfile)
+	staff := protected.Group("", middleware.RequireRole(model.RoleLibrarian, model.RoleAdmin))
+	staff.POST("/books", b.Create)
+	staff.PUT("/books/:id", b.Update)
+	staff.DELETE("/books/:id", b.Delete)
+	staff.POST("/authors", a.Create)
+	staff.POST("/categories", cat.Create)
+	staff.POST("/books/:id/copies", copies.Create)
+	staff.POST("/loans", loans.Borrow)
+	staff.POST("/loans/:id/return", loans.Return)
+	admin := protected.Group("", middleware.RequireRole(model.RoleAdmin))
+	admin.GET("/users", users.List)
+	admin.PUT("/users/:id/role", users.SetRole)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	r.NoRoute(func(c *gin.Context) { handler.Error(c, 404, "not_found", "Route not found") })
 	r.NoMethod(func(c *gin.Context) { handler.Error(c, 405, "method_not_allowed", "Method not allowed") })
-	return r
+	return r, nil
 }

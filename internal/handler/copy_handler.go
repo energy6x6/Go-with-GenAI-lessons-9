@@ -21,6 +21,8 @@ func NewCopyHandler(r repository.CopyRepository) *CopyHandler { return &CopyHand
 // @Success 201 {object} model.Copy
 // @Failure 400,404,409,422,500 {object} model.ErrorResponse
 // @Router /books/{id}/copies [post]
+// @Security BearerAuth
+// @Failure 401,403 {object} model.ErrorResponse
 func (h *CopyHandler) Create(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {

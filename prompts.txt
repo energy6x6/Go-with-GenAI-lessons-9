@@ -1,0 +1,73 @@
+Lesson 9 — implementation specifications and review prompts
+Prompts for an AI assistant covering authentication, authorization, security
+review and integration tests.
+
+Task 2.1 — Authentication and migration
+Extend the completed Go/Gin/PostgreSQL LibraTrack Lesson 8 application.
+Keep normalized books/authors/categories/copies, versioned SQL and existing layers.
+In this new Lesson 9 database, retain migrations 000001 and 000002, create
+000003_add_auth_fields.up.sql/down.sql, move the demo seed to 000004, and add
+000005_loans. Do not migrate or modify the Lesson 8 database. Role already exists:
+retain it and its reader/librarian/admin constraint; never drop it in auth rollback.
+Add password_hash and a case-insensitive unique email index. Legacy seeded accounts
+have no usable password. Do not store or publish default staff credentials.
+Put reusable bcrypt and JWT code in internal/auth and HTTP code in internal/handler.
+RegisterRequest contains email, password and optional name; UpdateProfileRequest
+contains only the editable display name. Never bind request JSON directly to User.
+Reject unknown fields and enforce bcrypt's 72-byte maximum. Hash with
+bcrypt.GenerateFromPassword and bcrypt.DefaultCost (10), always assigning reader.
+Annotate User.PasswordHash with json:"-" and exclude it from user-list SELECTs.
+Login uses bcrypt.CompareHashAndPassword. Unknown email and wrong password must
+return the same HTTP 401 envelope and "invalid credentials" message. Compare a
+precomputed dummy bcrypt hash for absent/legacy accounts. Never log request bodies,
+credentials, Authorization headers or token responses.
+Issue JWT with jwt.SigningMethodHS256 and user_id, role, exp (24 hours).
+Load the signing secret from os.Getenv("JWT_SECRET"); reject missing/short secrets
+at startup without a fallback. Pin HS256 and require expiration during parsing.
+Provide a local database-authorized command for the first administrator.
+
+Task 2.2 — Authentication/RBAC middleware and route registration
+Implement internal/middleware/auth.go and rbac.go. AuthMiddleware reads
+Authorization: Bearer <token>, validates signature, algorithm, exp, positive typed
+user_id and a known role. Confirm the user still exists and the database role
+matches the signed role; role changes invalidate earlier tokens. Set Gin context
+keys user_id and role. Abort denied requests with c.AbortWithStatusJSON.
+RequireRole(allowed ...string) reads c.Get("role"), returns 401 if unauthenticated,
+403 FORBIDDEN if the role is not allowed, and calls the next handler only on success.
+Keep route registration in the inherited internal/app.NewRouter, called by
+cmd/api/main.go. Use public and protected groups at /api/v1; nest staff and admin
+as siblings under protected so AuthMiddleware always executes before RequireRole.
+Public: register/login, catalog and existing catalog-related GET endpoints.
+Protected: GET /me/loans and PUT /me/profile, using the verified user ID only.
+Staff (librarian/admin): book POST/PUT/DELETE, author/category/copy creation,
+POST /loans and POST /loans/:id/return.
+Admin: GET /users and PUT /users/:id/role.
+Keep the existing error envelope. Limit login/register attempts per actual client
+IP, do not trust arbitrary forwarded headers, and allow only the configured CORS
+origin with Authorization in preflight. Swagger must document Bearer auth.
+
+Task 3.1 — Review
+Review this Go/Gin API code for security vulnerabilities. Check specifically for:
+1) SQL injection (raw queries, string concatenation); 2) Mass assignment (binding
+request JSON directly to DB models); 3) Missing authentication or RBAC checks;
+4) Sensitive data exposure (leaking password hashes in JSON responses).
+Output a structured list with line numbers, severity (Low/Medium/High), and
+proposed fixes. Do not rewrite files completely.
+Inspect internal/auth, middleware, handlers, repositories, route registration,
+SQL migrations and dependencies. Distinguish inherited issues, current findings,
+false positives and explicitly deferred work. Do not invent five vulnerabilities
+or mark a test/documentation gap as an exploitable security defect.
+
+Task 3.2 — Integration tests
+Adapt scenarios from the supplied auth_test.go and rbac_test.go examples to the
+actual application, not mock authentication or mock business handlers.
+Use table-driven httptest tests and real PostgreSQL in isolated test schemas.
+Cover duplicate email 422, valid login 200 with a verifiable JWT and 24-hour TTL,
+wrong/unknown credentials 401 with identical errors, missing/expired/forged/unsigned/
+wrong-algorithm/no-exp tokens 401, reader book creation 403 and librarian/admin
+book creation 201. Exercise all inherited write endpoints, user/role administration,
+profile mass assignment, password/hash leakage, role-change invalidation, own-loan
+filtering, double borrowing, returns and concurrent registration/borrowing.
+Assert rejected requests never execute their handlers. Run go test -v ./... and
+race tests, build, vet, go mod tidy, SQL up/down/up and govulncheck. Missing database
+configuration must not be reported as a complete successful integration run.

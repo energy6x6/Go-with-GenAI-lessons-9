@@ -9,6 +9,7 @@ import (
 	"libratrack/internal/model"
 	"libratrack/internal/repository"
 	"log"
+	"math"
 	"strconv"
 )
 
@@ -48,11 +49,36 @@ func readInput[T any](c *gin.Context) (T, bool) {
 		return input, false
 	}
 	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		Error(c, 422, "validation_error", "Request contains invalid or unknown fields")
+		return input, false
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		Error(c, 422, "validation_error", "Request fields are invalid")
 		return input, false
 	}
 	return input, true
+}
+
+func boundedPage(c *gin.Context) (int, int, bool) {
+	page, ok := pagination(c, "page", 1)
+	if !ok {
+		return 0, 0, false
+	}
+	limit, ok := pagination(c, "limit", 20)
+	if !ok {
+		return 0, 0, false
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if page-1 > uint64(math.MaxInt)/limit {
+		Error(c, 400, "invalid_pagination", "Page is too large")
+		return 0, 0, false
+	}
+	return int(limit), int((page - 1) * limit), true
 }
 func pagination(c *gin.Context, key string, fallback uint64) (uint64, bool) {
 	values, present := c.Request.URL.Query()[key]

@@ -1,0 +1,64 @@
+LibraTrack Lesson 9 — Security design / Проєктування безпеки
+
+Scope: extend Lesson 8 with password authentication, JWT, middleware RBAC,
+user administration and basic loans. Fines, refresh tokens and permission tables
+are outside the submitted homework scope. Loan duration is 14 days; staff issue
+and return copies on behalf of readers. These product choices are explicit and
+can be revisited; they do not come from user-supplied role claims.
+
+Access matrix (all application routes start with /api/v1)
+Public: POST /auth/register, POST /auth/login; GET /books, /books/:id,
+/authors, /authors/:id, /categories, /categories/:id,
+/books/:id/copies, /books/:id/availability. /health and /swagger/* are public.
+Any authenticated user: GET /me/loans, PUT /me/profile.
+librarian or admin: POST /books, PUT /books/:id, DELETE /books/:id,
+POST /authors, POST /categories, POST /books/:id/copies,
+POST /loans, POST /loans/:id/return.
+admin only: GET /users, PUT /users/:id/role.
+
+DTO boundaries
+RegisterRequest: email, password, optional name; role is always reader.
+LoginRequest: email, password. UpdateProfileRequest: name only.
+UpdateRoleRequest: role, only at an admin-protected route.
+BorrowRequest: copy_id and user_id, only at a staff-protected route.
+Unknown JSON fields are rejected. User ID, role, timestamps and hashes cannot be
+assigned through registration/profile DTOs. PasswordHash is never serialized.
+
+Authentication
+bcrypt.GenerateFromPassword(DefaultCost=10), bcrypt.CompareHashAndPassword.
+Registration: at least 12 characters and at most 72 UTF-8 bytes.
+Email: normalized to lower case, unique index on lower(email).
+Login: HTTP 401, "invalid credentials" for absent accounts and wrong passwords;
+a precomputed dummy bcrypt comparison reduces timing differences.
+JWT: HS256 only; user_id, role, exp=24 hours, iat. Require exp, positive user ID
+and valid role. Signing secret exclusively from JWT_SECRET (minimum 32 bytes),
+generated locally and stored in ignored .env with mode 0600.
+Verify account and current role on each protected request. A role mismatch
+invalidates the old token (401); the user must log in again.
+401: identity not established. 403: identity established but role disallowed.
+Authentication runs before role authorization; every denial aborts Gin execution.
+
+Ownership and data integrity
+/me/loans always uses user_id from the verified Gin context, with bounded
+pagination; a user_id query filter is rejected. Staff alone may choose borrowers.
+Borrowing/returning is transactional; row locks and a partial unique index prevent
+two active loans for one copy. A returned copy becomes available atomically.
+Loan history restricts deletion of referenced copies/users through foreign keys.
+
+Operational boundaries
+Logger records method, path, status and duration, skipping bodies, headers and
+query strings. SQL parameters are hidden. Auth responses are no-store.
+Authentication endpoints allow 20 requests per minute per real client IP, using
+a bounded process-local store. Forwarded headers are not trusted by default.
+CORS allows only ALLOWED_ORIGIN, with Authorization permitted in preflight.
+API binds loopback for local coursework. Public deployment requires HTTPS at a
+trusted reverse proxy and a deliberately configured proxy/CORS policy.
+No public registration can create staff. Bootstrap first staff locally with
+cmd/set-role using database credentials; subsequent changes use admin API.
+Logout revocation, refresh rotation and a distributed rate limiter are deferred
+and documented in security_audit.md; changing roles revokes previous role tokens.
+
+Manual verification
+Read the access matrix and DTOs; compare wrong/unknown login responses; inspect
+LoggingMiddleware and abort paths. Verify 401 for missing or invalid tokens,
+403 for reader writes and 201 for staff book creation using real API requests.

@@ -54,6 +54,8 @@ func (r *copyRepository) Availability(ctx context.Context, id uint) (model.Avail
 }
 
 type Repositories struct {
+	Users      UserRepository
+	Loans      LoanRepository
 	Books      BookRepository
 	Authors    AuthorRepository
 	Categories CategoryRepository
@@ -61,5 +63,5 @@ type Repositories struct {
 }
 
 func NewRepositories(db *gorm.DB) Repositories {
-	return Repositories{NewBookRepository(db), NewAuthorRepository(db), NewCategoryRepository(db), NewCopyRepository(db)}
+	return Repositories{Users: NewUserRepository(db), Loans: NewLoanRepository(db), Books: NewBookRepository(db), Authors: NewAuthorRepository(db), Categories: NewCategoryRepository(db), Copies: NewCopyRepository(db)}
 }
